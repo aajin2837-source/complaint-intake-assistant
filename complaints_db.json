@@ -398,7 +398,28 @@
       "initialRiskAssessment": "The cracked seals likely compromised the integrity of the capsules, leading to missing contents and potential underdosing. This defect poses a significant risk to patient safety by reducing therapeutic efficacy and could result in treatment failure. Root cause may involve packaging process errors or material defects during sealing.",
       "status": "Committed to QMS Ledger",
       "id": 19
+    },
+    {
+      "complaintSource": "Apollo Pharmacy branch",
+      "customerName": "Apollo Pharmacy",
+      "productName": "Pantoprazole Tablets",
+      "productStrength": "40mg",
+      "batchNumber": "PAN-2026-X91",
+      "manufacturingDate": "2026-01-15",
+      "expiryDate": "2029-01-14",
+      "quantityAffected": "150 boxes",
+      "complaintType": "Packaging Defect",
+      "complaintDate": "2026-07-24",
+      "description": "Hi team, I need to log a quality complaint regarding a shipment we received today at our Apollo Pharmacy branch from Apex Pharma Logistics. The product is Pantoprazole Tablets 40mg under batch number PAN-2026-X91, manufactured on January 15, 2026, with an expiry date of January 14, 2029. We received 150 boxes, but upon inspection, several blister packs inside have severe crushing and seal leakage. Please log this as high priority.",
+      "initialSeverity": "High",
+      "priority": "High",
+      "complaintCategory": "Packaging Defect",
+      "suggestedSeverity": "Major",
+      "suggestedNextAction": "Route to QA Investigation & Issue Replacement",
+      "initialRiskAssessment": "The crushing and seal leakage suggest a failure in the blister packaging process or handling damage during transit. This defect could compromise product integrity, leading to dosage inaccuracies or contamination, posing a significant risk to patient safety. Immediate investigation and corrective action are warranted to prevent potential therapeutic failures.",
+      "status": "Committed to QMS Ledger",
+      "id": 20
     }
   ],
-  "next_id": 20
+  "next_id": 21
 }
