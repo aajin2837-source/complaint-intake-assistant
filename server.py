@@ -1,6 +1,4 @@
-# ==========================================
-# 3. server.py (FastAPI Backend)
-# ==========================================
+
 import os
 import io
 import re
@@ -15,7 +13,7 @@ from groq import Groq
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-voa")
 
-# Initialize FastAPI app
+
 app = FastAPI(title="AI-VOA Complaint System Backend", version="1.0.2")
 
 app.add_middleware(
@@ -26,9 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API key: read from environment, never hardcode ---
-# Set this before starting the server, e.g.:
-#   export GROQ_API_KEY="gsk_xxxxxxxxxxxxxxxxxxxxxxxx"
+
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not GROQ_API_KEY:
     logger.warning(
@@ -38,13 +34,9 @@ if not GROQ_API_KEY:
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# Model: gemma2-9b-it was deprecated by Groq (2025-10-08), and its
-# suggested replacement llama-3.1-8b-instant was itself deprecated in
-# June 2026. Use a currently-supported model instead.
 MODEL_NAME = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 
-# Must match ALLOWED_EXTENSIONS / MAX_FILE_SIZE in AIAssistantSidebar.jsx
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024 
 
 FIELD_KEYS = [
     "complaintSource",
@@ -60,7 +52,6 @@ FIELD_KEYS = [
     "description",
     "initialSeverity",
     "priority",
-    # AI Copilot risk assessment fields
     "complaintCategory",
     "suggestedSeverity",
     "suggestedNextAction",
@@ -70,11 +61,6 @@ FIELD_KEYS = [
 
 class ComplaintInput(BaseModel):
     text: str
-    # When the frontend already has a filled-in record and the user sends a
-    # follow-up chat message, it sets mode="correction" and passes the
-    # current record here. This tells us to patch just the relevant
-    # field(s) instead of re-extracting (and possibly blanking/overwriting)
-    # the whole complaint.
     mode: Optional[str] = None
     current_data: Optional[dict] = None
 
@@ -99,10 +85,6 @@ class ComplaintRecord(BaseModel):
     initialRiskAssessment: str = ""
     status: str = "Pending Triage"
 
-
-# Simple file-backed store. Swap for a real database (Postgres, etc.) for
-# production use — this is fine for local dev / demos, and survives
-# server restarts (uvicorn --reload restarts on every file save).
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "complaints_db.json")
 
 
@@ -151,9 +133,6 @@ def _extract_json(text: str) -> dict:
 
 def _call_model(prompt: str) -> dict:
     try:
-        # First attempt: strict JSON mode. gpt-oss models are reasoning
-        # models — they burn some of max_tokens on internal reasoning
-        # before emitting the answer, so give them plenty of room.
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
@@ -168,8 +147,6 @@ def _call_model(prompt: str) -> dict:
             "Strict JSON mode failed (%s), retrying without response_format",
             strict_err,
         )
-        # Fallback: no forced JSON mode, just ask nicely and parse
-        # whatever comes back.
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
@@ -295,9 +272,6 @@ def _extract_docx_text(contents: bytes) -> str:
 
     doc = Document(io.BytesIO(contents))
     chunks = [p.text for p in doc.paragraphs if p.text]
-
-    # Complaint forms are often laid out as tables ("Field: Value" grids) —
-    # pull cell text too, or that content silently disappears.
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
@@ -330,11 +304,6 @@ async def extract_complaint(data: ComplaintInput):
         parsed_data = _call_model(prompt)
 
         if is_correction:
-            # In correction mode, a missing/blank key means "the model
-            # didn't touch this field" — fall back to the EXISTING value,
-            # never to a blank default or the raw message text. This is
-            # what stops a short correction like "batch number is X" from
-            # wiping out the description or other unrelated fields.
             result = {
                 key: (parsed_data.get(key) or data.current_data.get(key, ""))
                 for key in FIELD_KEYS
@@ -351,8 +320,6 @@ async def extract_complaint(data: ComplaintInput):
             detail="AI model returned an unparseable response. Try again or shorten the input text.",
         )
     except Exception as e:
-        # Surface the real error instead of silently returning blank fields —
-        # this is what was making it look like "nothing got extracted."
         logger.error("Extraction Error: %s", e)
         raise HTTPException(status_code=502, detail=f"AI extraction failed: {e}")
 

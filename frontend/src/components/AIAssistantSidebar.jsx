@@ -2,11 +2,7 @@ import React, { useState, useRef } from 'react';
 
 const API_BASE = 'http://localhost:8000';
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.eml'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-// Fields that indicate the form already has real data in it (as opposed
-// to being freshly reset). Used to decide whether a chat message should
-// be treated as a correction to the existing record.
+const MAX_FILE_SIZE = 10 * 1024 * 1024; 
 const SIGNAL_FIELDS = ['productName', 'batchNumber', 'complaintType', 'description', 'customerName'];
 
 const isFormFilled = (data) => {
@@ -46,12 +42,6 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     ]);
   };
 
-  // ---- API calls -----------------------------------------------------
-
-  // `isCorrection` + `currentData` tell the backend this is a follow-up
-  // tweak to an existing record (e.g. "batch number should be X"), not a
-  // fresh document — so it should only return the field(s) that actually
-  // changed, copying everything else over from currentData unchanged.
   const callExtractApi = async (text, { isCorrection = false, currentData = null } = {}) => {
     const body = { text };
     if (isCorrection && currentData) {
@@ -68,7 +58,7 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     const payload = await response.json();
 
     if (!response.ok) {
-      // FastAPI HTTPException bodies look like { detail: "..." }
+      
       const detail = payload?.detail || `Request failed with status ${response.status}`;
       throw new Error(detail);
     }
@@ -76,8 +66,6 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     return payload;
   };
 
-  // Uploads a binary file (PDF/DOCX) to a file-handling endpoint and reports
-  // real upload progress via XHR (fetch has no upload-progress event).
   const uploadFileForExtraction = (file, onProgress) => {
     return new Promise((resolve, reject) => {
       const formDataObj = new FormData();
@@ -88,7 +76,7 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          // reserve the last stretch of the bar for server-side processing
+          
           onProgress(Math.min(90, Math.round((e.loaded / e.total) * 90)));
         }
       };
@@ -123,8 +111,7 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     });
   };
 
-  // ---- File handling ---------------------------------------------------
-
+  
   const getExtension = (name) => {
     const idx = name.lastIndexOf('.');
     return idx === -1 ? '' : name.slice(idx).toLowerCase();
@@ -152,19 +139,15 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
 
     try {
       let extractedData;
-
-      // A newly uploaded document is a fresh source of truth, not a
-      // correction — so this always runs a full extraction, never
-      // mode: 'correction'.
       if (ext === '.txt' || ext === '.eml') {
-        // Plain-text formats can be parsed entirely in the browser.
+       
         setProgress(35);
         const text = await readFileAsText(file);
         setProgress(70);
         extractedData = await callExtractApi(text);
         setProgress(100);
       } else {
-        // PDF/DOCX need server-side parsing — upload the raw file.
+        
         extractedData = await uploadFileForExtraction(file, setProgress);
       }
 
@@ -191,7 +174,7 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
   const handleFileInputChange = (e) => {
     const file = e.target.files?.[0];
     handleFile(file);
-    e.target.value = ''; // allow re-selecting the same file later
+    e.target.value = ''; 
   };
 
   const handleDrop = (e) => {
@@ -214,8 +197,6 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     setIsDragging(false);
   };
 
-  // ---- Paste text box ---------------------------------------------------
-
   const handlePasteSubmit = async (e) => {
     e.preventDefault();
     if (!pasteText.trim()) return;
@@ -227,7 +208,7 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
 
     try {
       setProgress(50);
-      // Pasted text is also a fresh source document — full extraction.
+     
       const extractedData = await callExtractApi(text);
       setProgress(100);
       if (onExtract) onExtract(extractedData);
@@ -240,8 +221,6 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     }
   };
 
-  // ---- Chat input ---------------------------------------------------
-
   const handleSend = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -250,11 +229,6 @@ export default function AIAssistantSidebar({ formData, onExtract }) {
     const newMessages = [...messages, { sender: 'user', text: userText }];
     setMessages(newMessages);
     setInput('');
-
-    // If the form already has real data in it, treat this message as a
-    // correction to that record ("batch number is wrong, it's X") rather
-    // than a whole new complaint — send the current record as context so
-    // the backend only patches the relevant field(s).
     const isCorrection = isFormFilled(formData);
 
     try {

@@ -23,16 +23,11 @@ export default function App() {
     initialRiskAssessment: '',
   });
 
-  // Bumped every time a new complaint's data is loaded into the form —
-  // either by AI extraction or by the "Reset Form" button. ComplaintForm
-  // watches this to clear the saved/committed status of a *previous*
-  // complaint that might still be lingering in its UI.
   const [formVersion, setFormVersion] = useState(0);
 
   const handleExtract = (responsePayload) => {
     if (!responsePayload) return;
 
-    // Handle case where backend wraps data in an object like { data: { ... } } or { result: { ... } }
     const extracted = responsePayload.data || responsePayload.result || responsePayload;
 
     setFormData(prev => ({
@@ -55,9 +50,6 @@ export default function App() {
       suggestedNextAction: extracted.suggestedNextAction || extracted.suggested_next_action || prev.suggestedNextAction,
       initialRiskAssessment: extracted.initialRiskAssessment || extracted.initial_risk_assessment || prev.initialRiskAssessment,
     }));
-
-    // New complaint data just landed — clear any leftover "saved" /
-    // "committed" status from whatever was in the form before.
     setFormVersion(v => v + 1);
   };
 
@@ -66,9 +58,6 @@ export default function App() {
       <div className="flex-1 overflow-y-auto p-6">
         <ComplaintForm formData={formData} setFormData={setFormData} formVersion={formVersion} bumpFormVersion={() => setFormVersion(v => v + 1)} />
       </div>
-      {/* formData is passed down so the AI assistant always has the real,
-          current record (including any manual edits) to send as
-          correction context — not a stale shadow copy of its own. */}
       <AIAssistantSidebar formData={formData} onExtract={handleExtract} />
     </div>
   );

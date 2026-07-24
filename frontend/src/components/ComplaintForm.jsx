@@ -1,6 +1,4 @@
-// ==========================================
-// 2. ComplaintForm.jsx (Corrected Value Bindings + AI Risk Assessment panel)
-// ==========================================
+
 import React, { useState } from 'react';
 import RiskAssessmentPanel from './RiskAssessmentPanel';
 
@@ -37,19 +35,11 @@ export default function ComplaintForm({ formData, setFormData, formVersion, bump
     setFormData(emptyForm);
     setSavedComplaintId(null);
     setStatus('Pending Triage');
-    // RiskAssessmentPanel keeps its own internal state (the slider's
-    // dragged/confirmed position, success/error messages) that can't be
-    // reached from here. Bumping formVersion changes its `key`, forcing
-    // React to unmount and remount it fresh, resetting that state too.
     bumpFormVersion();
   };
-
-  // Also clear our own "saved/committed" status whenever App signals a new
-  // complaint was loaded (e.g. a fresh AI extraction), not just on manual reset.
   React.useEffect(() => {
     setSavedComplaintId(null);
     setStatus('Pending Triage');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formVersion]);
 
   const handleSaveComplaint = async (e) => {

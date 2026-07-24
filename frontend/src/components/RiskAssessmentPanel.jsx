@@ -2,8 +2,8 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 
 function SlideToConfirm({ label, confirmedLabel, onConfirm, disabled }) {
   const trackRef = useRef(null);
-  const dragXRef = useRef(0); // source of truth, avoids stale-closure bugs
-  const [dragX, setDragX] = useState(0); // mirrors dragXRef, just for rendering
+  const dragXRef = useRef(0);
+  const [dragX, setDragX] = useState(0); 
   const [dragging, setDragging] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
@@ -48,21 +48,19 @@ function SlideToConfirm({ label, confirmedLabel, onConfirm, disabled }) {
       dragXRef.current = 0;
       setDragX(0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [onConfirm]);
 
   const handleMove = useCallback((e) => {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     applyPosition(clientX);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   const startDrag = (e) => {
     if (disabled || confirmed) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     setDragging(true);
-    // Register the initial press position immediately — this is what makes
-    // a plain click near the end of the track work, not just a drag.
     applyPosition(clientX);
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', finishDrag);
@@ -70,7 +68,6 @@ function SlideToConfirm({ label, confirmedLabel, onConfirm, disabled }) {
     window.addEventListener('touchend', finishDrag);
   };
 
-  // Clean up listeners if the component unmounts mid-drag
   useEffect(() => {
     return () => {
       window.removeEventListener('mousemove', handleMove);
@@ -137,9 +134,6 @@ export default function RiskAssessmentPanel({ formData, setFormData, complaintId
     setSuccessMessage('');
     try {
       let idToCommit = complaintId;
-
-      // Not saved yet — save it first so the commit button works
-      // standalone, without forcing the user back to "Save Complaint".
       if (!idToCommit) {
         console.log('[RiskAssessmentPanel] No complaintId yet, auto-saving first...');
         const saveResponse = await fetch('http://localhost:8000/api/complaints', {
