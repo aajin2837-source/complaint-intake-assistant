@@ -1,7 +1,5 @@
-
 import os
 import io
-import re
 import json
 import logging
 from typing import Optional
@@ -10,11 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 
+from complaint_shared import FIELD_KEYS
+from agent_graph import build_agent_graph, run_extraction
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-voa")
 
 
-app = FastAPI(title="AI-VOA Complaint System Backend", version="1.0.2")
+app = FastAPI(title="AI-VOA Complaint System Backend", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,30 +34,12 @@ if not GROQ_API_KEY:
     )
 
 client = Groq(api_key=GROQ_API_KEY)
-
 MODEL_NAME = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024 
+# Compiled once at import time; reused (cheaply) across requests.
+AGENT_GRAPH = build_agent_graph(client, MODEL_NAME)
 
-FIELD_KEYS = [
-    "complaintSource",
-    "customerName",
-    "productName",
-    "productStrength",
-    "batchNumber",
-    "manufacturingDate",
-    "expiryDate",
-    "quantityAffected",
-    "complaintType",
-    "complaintDate",
-    "description",
-    "initialSeverity",
-    "priority",
-    "complaintCategory",
-    "suggestedSeverity",
-    "suggestedNextAction",
-    "initialRiskAssessment",
-]
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
 class ComplaintInput(BaseModel):
@@ -84,6 +67,7 @@ class ComplaintRecord(BaseModel):
     suggestedNextAction: str = ""
     initialRiskAssessment: str = ""
     status: str = "Pending Triage"
+
 
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "complaints_db.json")
 
@@ -115,146 +99,9 @@ def read_root():
     return {
         "message": "AI-VOA Complaint System Backend Running.",
         "model": MODEL_NAME,
+        "agent_framework": "langgraph",
         "groq_key_configured": bool(GROQ_API_KEY),
     }
-
-
-def _extract_json(text: str) -> dict:
-    """Pull a JSON object out of raw model text, in case of stray
-    markdown fences or leading/trailing commentary."""
-    text = text.strip()
-    text = re.sub(r"^```(json)?", "", text).strip()
-    text = re.sub(r"```$", "", text).strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise json.JSONDecodeError("No JSON object found", text, 0)
-    return json.loads(match.group(0))
-
-
-def _call_model(prompt: str) -> dict:
-    try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=2048,
-            response_format={"type": "json_object"},
-        )
-        content = completion.choices[0].message.content or ""
-        return _extract_json(content)
-    except Exception as strict_err:
-        logger.warning(
-            "Strict JSON mode failed (%s), retrying without response_format",
-            strict_err,
-        )
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=2048,
-        )
-        content = completion.choices[0].message.content or ""
-        return _extract_json(content)
-
-
-def _build_fresh_extraction_prompt(text: str) -> str:
-    return f"""
-    You are an expert pharmaceutical quality assurance and compliance AI agent.
-    Analyze the complaint text below and extract the following fields precisely based ONLY on the provided text.
-    If a specific field is not mentioned or cannot be inferred, return an empty string (""). Do not guess or use hardcoded placeholders.
-
-    Current Date Context: 2026-07-24. Convert any relative or written dates into standard YYYY-MM-DD format.
-
-    Return ONLY a JSON object (no markdown, no commentary) with these EXACT keys:
-    - complaintSource (entity reporting it, e.g. pharmacy or hospital name)
-    - customerName (customer or organization name)
-    - productName (name of the drug/product)
-    - productStrength (e.g., 500mg, 250mg)
-    - batchNumber (lot or batch code)
-    - manufacturingDate (YYYY-MM-DD)
-    - expiryDate (YYYY-MM-DD)
-    - quantityAffected (number of units/boxes if mentioned, else "")
-    - complaintType (e.g., Discoloured Capsules, Packaging Defect, Contamination)
-    - complaintDate (YYYY-MM-DD, default to 2026-07-24 if not specified)
-    - description (the exact full text or summary of the issue)
-    - initialSeverity (Low, Medium, High, or Critical)
-    - priority (Low, Medium, High, or Urgent)
-    - complaintCategory (a short classification, e.g. "Product Defect - Discoloration", "Packaging Defect", "Contamination", "Documentation Error")
-    - suggestedSeverity (your AI risk-assessment recommendation: Minor, Major, or Critical, based on patient safety impact)
-    - suggestedNextAction (a short recommended next step for QA, e.g. "Route to QA Investigation & Issue Replacement", "Initiate Batch Recall Review", "Log for Trend Monitoring")
-    - initialRiskAssessment (2-3 sentence narrative on likely root cause and risk to patient safety, written as a QA analyst would)
-
-    Complaint Text:
-    {text}
-    """
-
-
-def _build_correction_prompt(text: str, current_data: dict) -> str:
-    existing_json = json.dumps({key: current_data.get(key, "") for key in FIELD_KEYS}, indent=2)
-    return f"""
-    You are an expert pharmaceutical quality assurance and compliance AI agent helping fix a
-    complaint record that has ALREADY been filled in.
-
-    Here is the EXISTING record as JSON:
-    {existing_json}
-
-    The user just sent this follow-up message. It is a correction or clarification to ONE OR A FEW
-    fields of the record above. It is NOT a brand-new complaint, so do NOT re-extract from scratch
-    and do NOT treat it as a replacement for the whole record:
-
-    "{text}"
-
-    Task: figure out which field(s), if any, this message is correcting or adding information for.
-    This can be ANY field in the record — not just batch/lot number. Read the message carefully for
-    what it's actually referring to before deciding. Examples of the range of corrections you must
-    handle equally well:
-    - "actually the batch number is OMP-2026-M13" -> only batchNumber changes
-    - "the customer is City Hospital Pharmacy, not what's in there now" -> only customerName changes
-    - "manufacturing date should be march 1st 2026" -> only manufacturingDate changes, converted to 2026-03-01
-    - "this should be marked high priority" -> only priority changes, to "High"
-    - "actually 40 boxes were affected, not what you have" -> only quantityAffected changes
-    - "can you also note it was a foreign hospital, not a local one" -> only complaintSource or description changes, whichever the message is actually clarifying — not both, and not fields the message doesn't touch
-    - "no changes, just confirming" or a message unrelated to any field -> return the existing record completely unchanged
-
-    Rules:
-    - Return a JSON object with the EXACT SAME keys as the existing record above.
-    - For every field the message does NOT mention or change, copy the existing value over UNCHANGED
-      (do not blank it, do not guess a new value for it, do not "helpfully" rewrite it).
-    - Only change the value(s) the message actually addresses.
-    - initialSeverity must be one of: Low, Medium, High, Critical. priority must be one of: Low, Medium, High, Urgent.
-      suggestedSeverity must be one of: Minor, Major, Critical. If the message doesn't clearly map to one of
-      these exact values, leave the field unchanged rather than guessing.
-    - NEVER copy the user's raw message into "description" unless the message is clearly rewriting
-      or adding to the complaint's description itself. If in doubt, leave "description" as it was.
-    - Convert any dates mentioned into YYYY-MM-DD format (current date context: 2026-07-24).
-
-    Return ONLY the JSON object — no markdown, no commentary.
-    Keys required: {", ".join(FIELD_KEYS)}
-    """
-
-
-def _finalize_fresh_result(parsed_data: dict, original_text: str) -> dict:
-    """Fill in the same sensible defaults for a brand-new extraction,
-    shared by both the text endpoint and the file-upload endpoint."""
-    result = {key: parsed_data.get(key, "") for key in FIELD_KEYS}
-    if not result["description"]:
-        result["description"] = original_text
-    if not result["complaintDate"]:
-        result["complaintDate"] = "2026-07-24"
-    if not result["initialSeverity"]:
-        result["initialSeverity"] = "Medium"
-    if not result["priority"]:
-        result["priority"] = "Medium"
-    if not result["suggestedSeverity"]:
-        result["suggestedSeverity"] = "Major"
-    if not result["suggestedNextAction"]:
-        result["suggestedNextAction"] = "Route to QA Investigation"
-    if not result["initialRiskAssessment"]:
-        result["initialRiskAssessment"] = (
-            "Automated risk assessment unavailable for this complaint — "
-            "please review manually."
-        )
-    return result
 
 
 def _extract_pdf_text(contents: bytes) -> str:
@@ -277,7 +124,6 @@ def _extract_docx_text(contents: bytes) -> str:
             for cell in row.cells:
                 if cell.text:
                     chunks.append(cell.text)
-
     return "\n".join(chunks).strip()
 
 
@@ -292,27 +138,13 @@ async def extract_complaint(data: ComplaintInput):
             detail="Server misconfigured: GROQ_API_KEY environment variable is not set.",
         )
 
-    is_correction = data.mode == "correction" and bool(data.current_data)
-
-    prompt = (
-        _build_correction_prompt(data.text, data.current_data)
-        if is_correction
-        else _build_fresh_extraction_prompt(data.text)
-    )
-
     try:
-        parsed_data = _call_model(prompt)
-
-        if is_correction:
-            result = {
-                key: (parsed_data.get(key) or data.current_data.get(key, ""))
-                for key in FIELD_KEYS
-            }
-        else:
-            result = _finalize_fresh_result(parsed_data, data.text)
-
-        return result
-
+        return run_extraction(
+            AGENT_GRAPH,
+            text=data.text,
+            mode=data.mode,
+            current_data=data.current_data,
+        )
     except json.JSONDecodeError as e:
         logger.error("Model did not return valid JSON: %s", e)
         raise HTTPException(
@@ -348,16 +180,10 @@ async def extract_complaint_file(file: UploadFile = File(...)):
     contents = await file.read()
 
     if len(contents) > MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"'{filename}' is over the 10MB limit.",
-        )
+        raise HTTPException(status_code=400, detail=f"'{filename}' is over the 10MB limit.")
 
     try:
-        if ext == ".pdf":
-            text = _extract_pdf_text(contents)
-        else:
-            text = _extract_docx_text(contents)
+        text = _extract_pdf_text(contents) if ext == ".pdf" else _extract_docx_text(contents)
     except ImportError as e:
         logger.error("Missing text-extraction dependency: %s", e)
         raise HTTPException(
@@ -380,17 +206,11 @@ async def extract_complaint_file(file: UploadFile = File(...)):
             ),
         )
 
-    prompt = _build_fresh_extraction_prompt(text)
-
     try:
-        parsed_data = _call_model(prompt)
-        return _finalize_fresh_result(parsed_data, text)
+        return run_extraction(AGENT_GRAPH, text=text, mode=None, current_data=None)
     except json.JSONDecodeError as e:
         logger.error("Model did not return valid JSON: %s", e)
-        raise HTTPException(
-            status_code=502,
-            detail="AI model returned an unparseable response. Try again.",
-        )
+        raise HTTPException(status_code=502, detail="AI model returned an unparseable response. Try again.")
     except Exception as e:
         logger.error("Extraction Error: %s", e)
         raise HTTPException(status_code=502, detail=f"AI extraction failed: {e}")
