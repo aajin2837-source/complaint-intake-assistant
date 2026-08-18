@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://complaint-intake-assistant.onrender.com';
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.eml'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; 
 const SIGNAL_FIELDS = ['productName', 'batchNumber', 'complaintType', 'description', 'customerName'];

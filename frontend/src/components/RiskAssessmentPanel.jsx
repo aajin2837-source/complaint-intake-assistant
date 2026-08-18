@@ -136,7 +136,7 @@ export default function RiskAssessmentPanel({ formData, setFormData, complaintId
       let idToCommit = complaintId;
       if (!idToCommit) {
         console.log('[RiskAssessmentPanel] No complaintId yet, auto-saving first...');
-        const saveResponse = await fetch('http://localhost:8000/api/complaints', {
+        const saveResponse = await fetch('https://complaint-intake-assistant.onrender.com', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
@@ -153,7 +153,7 @@ export default function RiskAssessmentPanel({ formData, setFormData, complaintId
 
       console.log('[RiskAssessmentPanel] Committing complaint', idToCommit);
       const response = await fetch(
-        `http://localhost:8000/api/complaints/${idToCommit}/commit`,
+        `https://complaint-intake-assistant.onrender.com${idToCommit}/commit`,
         { method: 'POST' }
       );
       if (!response.ok) {

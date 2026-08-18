@@ -45,7 +45,7 @@ export default function ComplaintForm({ formData, setFormData, formVersion, bump
   const handleSaveComplaint = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:8000/api/complaints', {
+      const response = await fetch('https://complaint-intake-assistant.onrender.com', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
